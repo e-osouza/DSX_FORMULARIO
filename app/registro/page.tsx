@@ -15,9 +15,9 @@ const completeLead = async (email: string, data: any) => {
 }
 
 export default function Registro() {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const router = useRouter()
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
   const [step, setStep] = useState(0)
   const [completedSteps, setCompletedSteps] = useState<number[]>([])
   const [leadId, setLeadId] = useState<string | null>(null)
@@ -109,130 +109,176 @@ export default function Registro() {
     if (shouldUseName) {
       const label = currentQuestion.label
       const labelWithLowerCase = label.charAt(0).toLowerCase() + label.slice(1)
+      // 👇 aqui estava o erro, antes estava `${firstName,} ...`
       return `${firstName}, ${labelWithLowerCase}`
     }
 
     return currentQuestion.label
   }
 
+  // ====================== CANVAS ANIMADO AJUSTADO PARA TS ======================
   useEffect(() => {
+  let w = 0
+  let h = 0
+  let t = 0
+  let animationId = 0
+  let running = true
+  let lastTime = performance.now()
+  let gradientCache: CanvasGradient | null = null
+
+  let frameCount = 0
+  const startTime = performance.now()
+  const quality = { lineCount: 8, shadowBlur: 12, step: 4 }
+
+  const colors = {
+    deepBlack: "#000000",
+    darkerBlack: "#050505",
+    darkGray: "#0a0a0a",
+    darkOrange: "#936103",
+    orange: "#c48104",
+    vibrantOrange: "#f5a205",
+  }
+
+  // helper pra pegar canvas + ctx com segurança
+  const getCanvasAndContext = () => {
     const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d", { alpha: true })
-    if (!ctx) return
+    if (!canvas) return null
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return null
+    return { canvas, ctx }
+  }
 
-    let w = 0,
-      h = 0,
-      t = 0
-    let animationId = 0
-    let running = true
-    let lastTime = performance.now()
-    let gradientCache: CanvasGradient | null = null
+  function resize() {
+    const result = getCanvasAndContext()
+    if (!result) return
 
-    let frameCount = 0
-    const startTime = performance.now()
-    const quality = { lineCount: 8, shadowBlur: 12, step: 4 }
+    const { canvas, ctx } = result
 
-    const colors = {
-      deepBlack: "#000000",
-      darkGray: "#0a0a0a",
-      darkestGreen: "#1a5e2f",
-      darkGreen: "#2d8f47",
-      vibrantGreen: "#4ecb58",
-      lightGreen: "#5fd66a",
+    const parent = canvas.parentElement
+    const rect = parent?.getBoundingClientRect()
+    const targetW = Math.floor(rect?.width ?? window.innerWidth)
+    const targetH = Math.floor(rect?.height ?? window.innerHeight)
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.25)
+
+    canvas.width = Math.round(targetW * dpr)
+    canvas.height = Math.round(targetH * dpr)
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+    w = targetW
+    h = targetH
+
+    const gradient = ctx.createRadialGradient(
+      w / 2,
+      h / 2,
+      0,
+      w / 2,
+      h / 2,
+      Math.max(w, h) * 0.8,
+    )
+    gradient.addColorStop(0, colors.deepBlack)
+    gradient.addColorStop(0.3, colors.darkerBlack)
+    gradient.addColorStop(0.6, colors.darkGray)
+    gradient.addColorStop(0.8, colors.darkOrange)
+    gradient.addColorStop(1, colors.orange)
+
+    gradientCache = gradient
+
+    const samplesTarget = 200
+    quality.step = Math.max(3, Math.round(w / samplesTarget))
+  }
+
+  function draw(now: number) {
+    if (!running) return
+
+    const result = getCanvasAndContext()
+    if (!result) return
+
+    const { ctx } = result
+
+    const dt = now - lastTime
+    if (dt < 30) {
+      animationId = window.requestAnimationFrame(draw)
+      return
+    }
+    lastTime = now
+    frameCount++
+
+    if (now - startTime > 1000 && now - startTime < 1100 && frameCount < 40) {
+      quality.lineCount = 5
+      quality.shadowBlur = 8
+      quality.step = Math.max(quality.step, 5)
     }
 
-    function resize() {
-      if (!canvas) return
-      const parent = canvas.parentElement
-      const rect = parent?.getBoundingClientRect()
-      const targetW = Math.floor(rect?.width ?? window.innerWidth)
-      const targetH = Math.floor(rect?.height ?? window.innerHeight)
-      const dpr = Math.min(window.devicePixelRatio || 1, 1.25)
-      canvas.width = Math.round(targetW * dpr)
-      canvas.height = Math.round(targetH * dpr)
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      w = targetW
-      h = targetH
-      const gradient = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.8)
-      gradient.addColorStop(0, colors.deepBlack)
-      gradient.addColorStop(0.3, colors.darkGray)
-      gradient.addColorStop(0.6, colors.darkestGreen)
-      gradient.addColorStop(0.8, colors.darkGreen)
-      gradient.addColorStop(1, colors.vibrantGreen)
-      gradientCache = gradient
-      const samplesTarget = 200
-      quality.step = Math.max(3, Math.round(w / samplesTarget))
+    t += 0.003 * (dt / 16.67)
+
+    ctx.clearRect(0, 0, w, h)
+
+    if (gradientCache) {
+      ctx.fillStyle = gradientCache
+      ctx.fillRect(0, 0, w, h)
     }
 
-    function draw(now: number) {
-      if (!running) return
-      const dt = now - lastTime
-      if (dt < 30) {
-        animationId = requestAnimationFrame(draw)
-        return
+    ctx.shadowBlur = quality.shadowBlur
+    ctx.shadowColor = "rgba(255, 136, 51, 0.5)"
+    ctx.lineWidth = 2.5
+
+    for (let i = 0; i < quality.lineCount; i++) {
+      ctx.beginPath()
+      const baseOffset = i * 50
+      const layerPhase = i * 0.4
+
+      for (let x = 0; x <= w; x += quality.step) {
+        const diagonalY = h - (x / w) * h
+        const wave1 = Math.sin(x * 0.008 + t * 2.5 + layerPhase) * 35
+        const wave2 = Math.cos(x * 0.012 - t * 2 + layerPhase * 0.7) * 20
+        const wave3 = Math.sin(x * 0.005 + t * 1.5 + layerPhase * 1.2) * 15
+        const y = diagonalY + wave1 + wave2 + wave3 + baseOffset - h * 0.15
+        ctx.lineTo(x, y)
       }
-      lastTime = now
-      frameCount++
-      if (now - startTime > 1000 && now - startTime < 1100 && frameCount < 40) {
-        quality.lineCount = 5
-        quality.shadowBlur = 8
-        quality.step = Math.max(quality.step, 5)
-      }
-      t += 0.003 * (dt / 16.67)
-      ctx.clearRect(0, 0, w, h)
-      if (gradientCache) {
-        ctx.fillStyle = gradientCache
-        ctx.fillRect(0, 0, w, h)
-      }
-      ctx.shadowBlur = quality.shadowBlur
-      ctx.shadowColor = "rgba(78, 203, 88, 0.5)"
-      ctx.lineWidth = 2.5
-      for (let i = 0; i < quality.lineCount; i++) {
-        ctx.beginPath()
-        const baseOffset = i * 50
-        const layerPhase = i * 0.4
-        for (let x = 0; x <= w; x += quality.step) {
-          const diagonalY = h - (x / w) * h
-          const wave1 = Math.sin(x * 0.008 + t * 2.5 + layerPhase) * 35
-          const wave2 = Math.cos(x * 0.012 - t * 2 + layerPhase * 0.7) * 20
-          const wave3 = Math.sin(x * 0.005 + t * 1.5 + layerPhase * 1.2) * 15
-          const y = diagonalY + wave1 + wave2 + wave3 + baseOffset - h * 0.15
-          ctx.lineTo(x, y)
-        }
-        const alpha = 0.3 + i * 0.08
-        const greenIntensity = Math.min(255, 78 + i * 15)
-        ctx.strokeStyle = `rgba(${greenIntensity}, ${200 + i * 5}, ${88 + i * 10}, ${alpha})`
-        ctx.stroke()
-      }
-      animationId = requestAnimationFrame(draw)
+
+      const alpha = 0.3 + i * 0.08
+      const orangeIntensity = Math.min(255, 200 + i * 10)
+      ctx.strokeStyle = `rgba(${orangeIntensity}, ${100 + i * 15}, ${51 + i * 5}, ${alpha})`
+      ctx.stroke()
     }
 
-    function handleVisibilityChange() {
-      if (document.hidden) {
-        running = false
-        cancelAnimationFrame(animationId)
-      } else {
-        if (!running) {
-          running = true
-          lastTime = performance.now()
-          animationId = requestAnimationFrame(draw)
-        }
-      }
-    }
+    animationId = window.requestAnimationFrame(draw)
+  }
 
-    window.addEventListener("resize", resize, { passive: true })
-    document.addEventListener("visibilitychange", handleVisibilityChange)
-    resize()
-    animationId = requestAnimationFrame(draw)
-
-    return () => {
+  function handleVisibilityChange() {
+    if (document.hidden) {
       running = false
-      window.removeEventListener("resize", resize)
-      document.removeEventListener("visibilitychange", handleVisibilityChange)
-      cancelAnimationFrame(animationId)
+      window.cancelAnimationFrame(animationId)
+    } else {
+      if (!running) {
+        running = true
+        lastTime = performance.now()
+        animationId = window.requestAnimationFrame(draw)
+      }
     }
-  }, [])
+  }
+
+  // se não tiver canvas/ctx disponível, nem inicia
+  if (!getCanvasAndContext()) return
+
+  const handleResize = () => resize()
+
+  window.addEventListener("resize", handleResize)
+  document.addEventListener("visibilitychange", handleVisibilityChange)
+
+  resize()
+  animationId = window.requestAnimationFrame(draw)
+
+  return () => {
+    running = false
+    window.removeEventListener("resize", handleResize)
+    document.removeEventListener("visibilitychange", handleVisibilityChange)
+    window.cancelAnimationFrame(animationId)
+  }
+}, [])
+
+  // =================== FIM DO CANVAS ===================
+
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -276,13 +322,13 @@ export default function Registro() {
   }
 
   const handleInputChange = (value: string) => {
-    const currentKey = questions[step].key
+    const currentKey = questions[step].key as keyof typeof formData
     let maskedValue = currentKey === "whatsapp" ? maskWhatsApp(value) : value
     if (currentKey === "email") {
       maskedValue = maskedValue.toLowerCase()
     }
     setFormData((prev) => ({ ...prev, [currentKey]: maskedValue }))
-    if (errors[currentKey as keyof typeof errors]) {
+    if (errors[currentKey]) {
       setErrors((prev) => ({ ...prev, [currentKey]: "" }))
     }
     if (currentKey === "empresa") {
@@ -291,9 +337,9 @@ export default function Registro() {
   }
 
   const handleRadioSelection = async (value: string) => {
-    const currentKey = questions[step].key
+    const currentKey = questions[step].key as keyof typeof formData
     setFormData((prev) => ({ ...prev, [currentKey]: value }))
-    if (errors[currentKey as keyof typeof errors]) {
+    if (errors[currentKey]) {
       setErrors((prev) => ({ ...prev, [currentKey]: "" }))
     }
     if (!completedSteps.includes(step)) {
@@ -347,9 +393,9 @@ export default function Registro() {
   }
 
   const handleNext = async () => {
-    const currentKey = questions[step].key
-    const currentValue = formData[currentKey as keyof typeof formData]
-    const error = validateField(currentKey, currentValue)
+    const currentKey = questions[step].key as keyof typeof formData
+    const currentValue = formData[currentKey]
+    const error = validateField(currentKey, String(currentValue))
     if (error) {
       setErrors((prev) => ({ ...prev, [currentKey]: error }))
       return
@@ -407,7 +453,7 @@ export default function Registro() {
 
         <div className="relative z-[2] flex flex-col items-center gap-2">
           <img
-            src="/images/captura-20de-20tela-202025-11-28-20a-cc-80s-2011.png"
+            src="/logo-dsx.svg"
             alt="DSX Logo"
             className="w-[280px] md:w-[320px] h-auto"
           />
@@ -416,7 +462,9 @@ export default function Registro() {
         <div className="relative z-[3] w-full max-w-[700px]">
           <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 md:p-10 border border-white/20 shadow-2xl">
             <div className="rounded-2xl px-6 py-4 bg-white/20 text-white mb-6">
-              <h2 className="text-[18px] md:text-[20px] font-medium leading-relaxed">{getCurrentLabel()}</h2>
+              <h2 className="text-[18px] md:text-[20px] font-medium leading-relaxed">
+                {getCurrentLabel()}
+              </h2>
             </div>
 
             {currentQuestion.type === "radio" ? (
@@ -431,7 +479,7 @@ export default function Registro() {
                       isNavigating || isSaving
                         ? "opacity-60 cursor-not-allowed bg-white/90 border-gray-200 text-gray-700"
                         : currentValue === option
-                          ? "bg-white border-[#4ecb58] text-gray-900 shadow-md"
+                          ? "bg-white border-[#f5a205] text-gray-900 shadow-md"
                           : "bg-white/90 border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-white"
                     }`}
                   >
@@ -444,13 +492,17 @@ export default function Registro() {
                 <div className="flex-1 min-w-0">
                   {currentQuestion.key === "whatsapp" ? (
                     <div
-                      className={`flex items-center h-14 rounded-xl bg-white text-gray-800 text-[15px] border-2 transition-all shadow-sm ${currentError ? "border-red-500" : "border-gray-200 focus-within:border-[#4ecb58]"}`}
+                      className={`flex items-center h-14 rounded-xl bg-white text-gray-800 text-[15px] border-2 transition-all shadow-sm ${
+                        currentError ? "border-red-500" : "border-gray-200 focus-within:border-[#f5a205]"
+                      }`}
                     >
-                      <span className="pl-4 pr-2 font-medium text-gray-600 whitespace-nowrap text-[15px]">+55</span>
+                      <span className="pl-4 pr-2 font-medium text-gray-600 whitespace-nowrap text-[15px]">
+                        +55
+                      </span>
                       <input
                         ref={inputRef}
                         type="text"
-                        value={currentValue}
+                        value={String(currentValue ?? "")}
                         onChange={(e) => handleInputChange(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleNext()}
                         placeholder={currentQuestion.placeholder}
@@ -461,11 +513,13 @@ export default function Registro() {
                     <input
                       ref={inputRef}
                       type={currentQuestion.type || "text"}
-                      value={currentValue}
+                      value={String(currentValue ?? "")}
                       onChange={(e) => handleInputChange(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleNext()}
                       placeholder={currentQuestion.placeholder}
-                      className={`w-full h-14 px-4 rounded-xl bg-white text-gray-800 text-[15px] outline-none placeholder:text-gray-400 border-2 transition-all shadow-sm ${currentError ? "border-red-500" : "border-gray-200 focus:border-[#4ecb58]"}`}
+                      className={`w-full h-14 px-4 rounded-xl bg-white text-gray-800 text-[15px] outline-none placeholder:text-gray-400 border-2 transition-all shadow-sm ${
+                        currentError ? "border-red-500" : "border-gray-200 focus:border-[#f5a205]"
+                      }`}
                     />
                   )}
                 </div>
@@ -473,7 +527,7 @@ export default function Registro() {
                 <button
                   onClick={handleNext}
                   disabled={isSaving}
-                  className="h-14 w-14 rounded-xl bg-[#4ecb58] hover:bg-[#45b850] active:scale-95 transition-all flex items-center justify-center text-white shadow-lg shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="h-14 w-14 rounded-xl bg-[#f5a205] hover:bg-[#dc9104] active:scale-95 transition-all flex items-center justify-center text-white shadow-lg shrink-0 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {isSaving ? (
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -494,7 +548,11 @@ export default function Registro() {
               <button
                 onClick={handleNavigatePrev}
                 disabled={step === 0}
-                className={`h-10 w-10 rounded-lg border border-white/20 backdrop-blur-sm flex items-center justify-center transition-all ${step === 0 ? "opacity-20 cursor-not-allowed" : "opacity-60 hover:opacity-100 hover:bg-white/10 active:scale-95"}`}
+                className={`h-10 w-10 rounded-lg border border-white/20 backdrop-blur-sm flex items-center justify-center transition-all ${
+                  step === 0
+                    ? "opacity-20 cursor-not-allowed"
+                    : "opacity-60 hover:opacity-100 hover:bg-white/10 active:scale-95"
+                }`}
               >
                 <ChevronLeft className="w-4 h-4 text-white" />
               </button>
@@ -502,7 +560,11 @@ export default function Registro() {
               <button
                 onClick={handleNavigateNext}
                 disabled={step === questions.length - 1 || !completedSteps.includes(step + 1)}
-                className={`h-10 w-10 rounded-lg border border-white/20 backdrop-blur-sm flex items-center justify-center transition-all ${step === questions.length - 1 || !completedSteps.includes(step + 1) ? "opacity-20 cursor-not-allowed" : "opacity-60 hover:opacity-100 hover:bg-white/10 active:scale-95"}`}
+                className={`h-10 w-10 rounded-lg border border-white/20 backdrop-blur-sm flex items-center justify-center transition-all ${
+                  step === questions.length - 1 || !completedSteps.includes(step + 1)
+                    ? "opacity-20 cursor-not-allowed"
+                    : "opacity-60 hover:opacity-100 hover:bg-white/10 active:scale-95"
+                }`}
               >
                 <ChevronRight className="w-4 h-4 text-white" />
               </button>
@@ -512,7 +574,13 @@ export default function Registro() {
               {questions.map((_, index) => (
                 <div
                   key={index}
-                  className={`h-2 rounded-full transition-all ${index === step ? "w-8 bg-[#4ecb58]" : index < step ? "w-2 bg-white/60" : "w-2 bg-white/30"}`}
+                  className={`h-2 rounded-full transition-all ${
+                    index === step
+                      ? "w-8 bg-[#f5a205]"
+                      : index < step
+                        ? "w-2 bg-white/60"
+                        : "w-2 bg-white/30"
+                  }`}
                 />
               ))}
             </div>
