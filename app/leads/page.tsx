@@ -1,202 +1,244 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Loader2, Mail, Phone, Building2, TrendingUp, User } from "lucide-react"
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore"
+import { useRouter } from "next/navigation"
+import { LogOut, Users, Filter, RefreshCw } from "lucide-react"
+import { useEffect, useState, useCallback } from "react"
+import { collection, getDocs, orderBy, query } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 
-interface Pessoa {
-  id?: string
+type Lead = {
+  id: string
   nome: string
   email: string
   whatsapp: string
   perfil: string
   empresa: string
   faturamento: string
+  criadoEm: string
 }
 
-export default function ListaPessoas() {
-  const [pessoas, setPessoas] = useState<Pessoa[]>([])
+export default function LeadsPage() {
+  const router = useRouter()
+  const [leads, setLeads] = useState<Lead[]>([])
+  const [search, setSearch] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [visibleCount, setVisibleCount] = useState(10) // mostra 2 por vez
 
-useEffect(() => {
-  setLoading(true)
-  setError(null)
+  // função para carregar leads do Firestore
+  const loadLeads = useCallback(async () => {
+    setLoading(true)
+    setError(null)
 
-  const leadsRef = collection(db, "leads")
-  const q = query(leadsRef, orderBy("createdAt", "desc"))
+    try {
+      const q = query(collection(db, "leads"), orderBy("createdAt", "desc"))
+      const snapshot = await getDocs(q)
 
-  const unsubscribe = onSnapshot(
-    q,
-    (snapshot) => {
-      const lista: Pessoa[] = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<Pessoa, "id">),
-      }))
+      const data: Lead[] = snapshot.docs.map((doc) => {
+        const d = doc.data() as any
 
-      setPessoas(lista)
-      setLoading(false)
-    },
-    (err) => {
-      console.error("Erro ao ouvir pessoas:", err)
-      setError("Erro ao carregar dados do Firebase")
+        return {
+          id: doc.id,
+          nome: d.nome ?? "",
+          email: d.email ?? "",
+          whatsapp: d.whatsapp ?? "",
+          perfil: d.perfil ?? "",
+          empresa: d.empresa ?? "",
+          faturamento: d.faturamento ?? "",
+          criadoEm: d.createdAt?.toDate
+            ? d.createdAt.toDate().toLocaleString("pt-BR")
+            : d.createdAt ?? "",
+        }
+      })
+
+      setLeads(data)
+      setVisibleCount(10) // reseta paginação ao recarregar
+    } catch (err) {
+      console.error("Erro ao carregar leads do Firebase:", err)
+      setError("Não foi possível carregar os leads. Tente novamente.")
+    } finally {
       setLoading(false)
     }
-  )
+  }, [])
 
-  return () => unsubscribe()
-}, [])
+  // carrega quando a página abre
+  useEffect(() => {
+    loadLeads()
+  }, [loadLeads])
 
-
-  if (loading) {
+  const filteredLeads = leads.filter((lead) => {
+    if (!search.trim()) return true
+    const term = search.toLowerCase()
     return (
-      <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-          <p className="text-gray-600">Carregando dados...</p>
-        </div>
-      </main>
+      lead.nome.toLowerCase().includes(term) ||
+      lead.email.toLowerCase().includes(term) ||
+      lead.empresa.toLowerCase().includes(term) ||
+      lead.perfil.toLowerCase().includes(term)
     )
+  })
+
+  // sempre que filtro ou lista mudar, volta a mostrar só 2
+  useEffect(() => {
+    setVisibleCount(10)
+  }, [search, leads])
+
+  const visibleLeads = filteredLeads.slice(0, visibleCount)
+  const hasMore = visibleCount < filteredLeads.length
+
+  const handleLoadMore = () => {
+    setVisibleCount((prev) => prev + 10)
+  }
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/logout", { method: "POST" }).catch(() => {})
+    } finally {
+      router.push("/login")
+    }
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">Lista de Pessoas</h1>
-          <p className="text-gray-600">Visualize e gerencie todos os registros cadastrados</p>
-          {error && (
-            <p className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded">
-              {error}
+    <main className="min-h-screen bg-white">
+      <header className="border-b border-[#eeeeee] bg-white">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl md:text-2xl font-semibold text-black">
+              Painel de Leads
+            </h1>
+            <p className="text-xs md:text-sm text-slate-400">
+              Visualize os leads capturados pelo formulário DSX
             </p>
-          )}
+          </div>
+          <button
+            onClick={handleLogout}
+            className="inline-flex items-center gap-2 text-xs md:text-sm px-3 py-2 rounded-lg bg-[var(--amarelo)] hover:bg-black hover:text-white transition cursor-pointer"
+          >
+            <LogOut className="w-4 h-4" />
+            Sair
+          </button>
+        </div>
+      </header>
+
+      <section className="max-w-6xl mx-auto px-4 py-6 space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-sm text-black">
+            <Users className="w-4 h-4 text-[var(--amarelo)]" />
+            <span>
+              Leads filtrados:{" "}
+              <span className="font-semibold text-black">
+                {filteredLeads.length}
+              </span>
+            </span>
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-3 md:items-center">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Filtrar por nome, email, empresa ou perfil..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full md:w-80 rounded-lg bg-[var(--cinzaclaro)] border border-[#eee] px-8 py-2 text-sm placeholder:text-black focus:outline-none focus:ring-2 focus:ring-[var(--amarelo)] focus:border-[var(--amarelo)]"
+              />
+              <Filter className="w-4 h-4 text-slate-500 absolute left-2 top-1/2 -translate-y-1/2" />
+            </div>
+
+            <button
+              type="button"
+              onClick={loadLeads}
+              disabled={loading}
+              className="inline-flex items-center gap-2 text-xs md:text-sm px-3 py-2 rounded-lg bg-[var(--amarelo)] hover:bg-black hover:text-white transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              {loading ? "Atualizando..." : "Atualizar"}
+            </button>
+          </div>
         </div>
 
-        {/* Empty State */}
-        {pessoas.length === 0 && !error && (
-          <div className="shadow-lg">
-            <div className="pt-12 text-center">
-              <User className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600 text-lg">Nenhuma pessoa cadastrada</p>
-              <p className="text-gray-500 text-sm mt-2">
-                Os registros aparecerão aqui quando forem adicionados
-              </p>
-            </div>
+        {error && (
+          <div className="border border-red-500/40 bg-red-500/10 text-red-200 text-sm px-4 py-3 rounded-lg">
+            {error}
           </div>
         )}
 
-        {/* Lista em Cards (Mobile) e Tabela (Desktop) */}
-        {pessoas.length > 0 && (
-          <>
-            {/* Grid para Mobile/Tablet */}
-            <div className="grid grid-cols-1 md:hidden gap-4">
-              {pessoas.map((pessoa, index) => (
-                <div key={pessoa.id || index} className="shadow-lg hover:shadow-xl transition-shadow">
-                  <div className="pt-6">
-                    <div className="space-y-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h3 className="font-bold text-lg text-gray-900">{pessoa.nome}</h3>
-                          <p className="text-sm text-gray-500 mt-1">{pessoa.perfil}</p>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2 border-t pt-4">
-                        <div className="flex items-center gap-3">
-                          <Mail className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                          <a
-                            href={`mailto:${pessoa.email}`}
-                            className="text-sm text-blue-600 hover:underline truncate"
-                          >
-                            {pessoa.email}
-                          </a>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <Phone className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                          <a
-                            href={`tel:${pessoa.whatsapp}`}
-                            className="text-sm text-blue-600 hover:underline"
-                          >
-                            {pessoa.whatsapp}
-                          </a>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <Building2 className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                          <span className="text-sm text-gray-700">{pessoa.empresa || "—"}</span>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <TrendingUp className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                          <span className="text-sm text-gray-700 font-medium">{pessoa.faturamento}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+        <div className="overflow-x-auto rounded-xl bg-[var(--cinzaclaro)]">
+          {loading && !leads.length ? (
+            <div className="py-10 text-center text-black text-sm">
+              Carregando leads...
             </div>
-
-            {/* Tabela para Desktop */}
-            <div className="hidden md:block bg-white rounded-lg shadow-lg overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                      <th className="px-6 py-4 text-left text-sm font-semibold">Nome</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold">Email</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold">WhatsApp</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold">Perfil</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold">Empresa</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold">Faturamento</th>
+          ) : (
+            <>
+              <table className="w-full text-xs md:text-sm">
+                <thead className="bg-[var(--amarelo)]">
+                  <tr className="text-left text-black">
+                    <th className="px-3 md:px-4 py-3 font-medium">Nome</th>
+                    <th className="px-3 md:px-4 py-3 font-medium">Email</th>
+                    <th className="px-3 md:px-4 py-3 font-medium hidden md:table-cell">
+                      WhatsApp
+                    </th>
+                    <th className="px-3 md:px-4 py-3 font-medium hidden md:table-cell">
+                      Perfil
+                    </th>
+                    <th className="px-3 md:px-4 py-3 font-medium">Empresa</th>
+                    <th className="px-3 md:px-4 py-3 font-medium hidden md:table-cell">
+                      Faturamento
+                    </th>
+                    <th className="px-3 md:px-4 py-3 font-medium hidden md:table-cell">
+                      Criado em
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleLeads.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="px-4 py-6 text-center text-black"
+                      >
+                        Nenhum lead encontrado com esse filtro.
+                      </td>
                     </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-gray-200">
-                    {pessoas.map((pessoa, index) => (
-                      <tr key={pessoa.id || index} className="hover:bg-blue-50 transition-colors">
-                        <td className="px-6 py-4">
-                          <span className="font-medium text-gray-900">{pessoa.nome}</span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <a href={`mailto:${pessoa.email}`} className="text-blue-600 hover:underline text-sm">
-                            {pessoa.email}
-                          </a>
-                        </td>
-                        <td className="px-6 py-4">
-                          <a href={`tel:${pessoa.whatsapp}`} className="text-blue-600 hover:underline text-sm">
-                            {pessoa.whatsapp}
-                          </a>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-                            {pessoa.perfil}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">{pessoa.empresa || "—"}</td>
-                        <td className="px-6 py-4">
-                          <span className="text-sm font-medium text-gray-900">{pessoa.faturamento}</span>
+                  ) : (
+                    visibleLeads.map((lead, index) => (
+                      <tr
+                        key={lead.id}
+                        className={
+                          `${index % 2 === 0 
+                            ? "bg-[var(--cinzaclaro)]" 
+                            : "bg-[#ffffff]"} 
+                          hover:bg-[var(--amarelo)] transition`
+                        }
+                      >
+                        <td className="px-3 md:px-4 py-3 font-medium">{lead.nome}</td>
+                        <td className="px-3 md:px-4 py-3">{lead.email}</td>
+                        <td className="px-3 md:px-4 py-3 hidden md:table-cell">{lead.whatsapp}</td>
+                        <td className="px-3 md:px-4 py-3 hidden md:table-cell">{lead.perfil}</td>
+                        <td className="px-3 md:px-4 py-3">{lead.empresa}</td>
+                        <td className="px-3 md:px-4 py-3 hidden md:table-cell">{lead.faturamento}</td>
+                        <td className="px-3 md:px-4 py-3 hidden md:table-cell text-xs text-black">
+                          {lead.criadoEm}
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    ))
+                  )}
+                </tbody>
+              </table>
 
-              {/* Rodapé da Tabela */}
-              <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
-                <p className="text-sm text-gray-600">
-                  Total de registros:{" "}
-                  <span className="font-semibold text-gray-900">{pessoas.length}</span>
-                </p>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+              {hasMore && (
+                <div className="py-4 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={handleLoadMore}
+                    className="px-4 py-2 text-xs md:text-sm rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-100 transition cursor-pointer"
+                  >
+                    Carregar mais
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </section>
     </main>
   )
 }
