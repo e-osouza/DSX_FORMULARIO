@@ -3,24 +3,19 @@
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, ChevronRight } from "lucide-react"
+import { completeLead, createLead } from "@/services/leads"
 
-// Mock functions since Supabase isn't configured
-const createLead = async (data: any) => {
-  console.log("Creating lead:", data)
-  return { id: "mock-lead-id-" + Date.now() }
-}
 
-const completeLead = async (email: string, data: any) => {
-  console.log("Completing lead:", email, data)
-}
 
 export default function Registro() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement | null>(null)
+
   const [step, setStep] = useState(0)
   const [completedSteps, setCompletedSteps] = useState<number[]>([])
   const [leadId, setLeadId] = useState<string | null>(null)
+
   const [isSaving, setIsSaving] = useState(false)
   const [isNavigating, setIsNavigating] = useState(false)
   const finalizingRef = useRef(false)
@@ -109,7 +104,6 @@ export default function Registro() {
     if (shouldUseName) {
       const label = currentQuestion.label
       const labelWithLowerCase = label.charAt(0).toLowerCase() + label.slice(1)
-      // 👇 aqui estava o erro, antes estava `${firstName,} ...`
       return `${firstName}, ${labelWithLowerCase}`
     }
 
@@ -118,167 +112,163 @@ export default function Registro() {
 
   // ====================== CANVAS ANIMADO AJUSTADO PARA TS ======================
   useEffect(() => {
-  let w = 0
-  let h = 0
-  let t = 0
-  let animationId = 0
-  let running = true
-  let lastTime = performance.now()
-  let gradientCache: CanvasGradient | null = null
+    let w = 0
+    let h = 0
+    let t = 0
+    let animationId = 0
+    let running = true
+    let lastTime = performance.now()
+    let gradientCache: CanvasGradient | null = null
 
-  let frameCount = 0
-  const startTime = performance.now()
-  const quality = { lineCount: 8, shadowBlur: 12, step: 4 }
+    let frameCount = 0
+    const startTime = performance.now()
+    const quality = { lineCount: 8, shadowBlur: 12, step: 4 }
 
-  const colors = {
-    deepBlack: "#000000",
-    darkerBlack: "#050505",
-    darkGray: "#0a0a0a",
-    darkOrange: "#936103",
-    orange: "#c48104",
-    vibrantOrange: "#f5a205",
-  }
-
-  // helper pra pegar canvas + ctx com segurança
-  const getCanvasAndContext = () => {
-    const canvas = canvasRef.current
-    if (!canvas) return null
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return null
-    return { canvas, ctx }
-  }
-
-  function resize() {
-    const result = getCanvasAndContext()
-    if (!result) return
-
-    const { canvas, ctx } = result
-
-    const parent = canvas.parentElement
-    const rect = parent?.getBoundingClientRect()
-    const targetW = Math.floor(rect?.width ?? window.innerWidth)
-    const targetH = Math.floor(rect?.height ?? window.innerHeight)
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.25)
-
-    canvas.width = Math.round(targetW * dpr)
-    canvas.height = Math.round(targetH * dpr)
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-
-    w = targetW
-    h = targetH
-
-    const gradient = ctx.createRadialGradient(
-      w / 2,
-      h / 2,
-      0,
-      w / 2,
-      h / 2,
-      Math.max(w, h) * 0.8,
-    )
-    gradient.addColorStop(0, colors.deepBlack)
-    gradient.addColorStop(0.3, colors.darkerBlack)
-    gradient.addColorStop(0.6, colors.darkGray)
-    gradient.addColorStop(0.8, colors.darkOrange)
-    gradient.addColorStop(1, colors.orange)
-
-    gradientCache = gradient
-
-    const samplesTarget = 200
-    quality.step = Math.max(3, Math.round(w / samplesTarget))
-  }
-
-  function draw(now: number) {
-    if (!running) return
-
-    const result = getCanvasAndContext()
-    if (!result) return
-
-    const { ctx } = result
-
-    const dt = now - lastTime
-    if (dt < 30) {
-      animationId = window.requestAnimationFrame(draw)
-      return
-    }
-    lastTime = now
-    frameCount++
-
-    if (now - startTime > 1000 && now - startTime < 1100 && frameCount < 40) {
-      quality.lineCount = 5
-      quality.shadowBlur = 8
-      quality.step = Math.max(quality.step, 5)
+    const colors = {
+      deepBlack: "#000000",
+      darkerBlack: "#050505",
+      darkGray: "#0a0a0a",
+      darkOrange: "#936103",
+      orange: "#c48104",
+      vibrantOrange: "#f5a205",
     }
 
-    t += 0.003 * (dt / 16.67)
-
-    ctx.clearRect(0, 0, w, h)
-
-    if (gradientCache) {
-      ctx.fillStyle = gradientCache
-      ctx.fillRect(0, 0, w, h)
+    const getCanvasAndContext = () => {
+      const canvas = canvasRef.current
+      if (!canvas) return null
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return null
+      return { canvas, ctx }
     }
 
-    ctx.shadowBlur = quality.shadowBlur
-    ctx.shadowColor = "rgba(255, 136, 51, 0.5)"
-    ctx.lineWidth = 2.5
+    function resize() {
+      const result = getCanvasAndContext()
+      if (!result) return
 
-    for (let i = 0; i < quality.lineCount; i++) {
-      ctx.beginPath()
-      const baseOffset = i * 50
-      const layerPhase = i * 0.4
+      const { canvas, ctx } = result
 
-      for (let x = 0; x <= w; x += quality.step) {
-        const diagonalY = h - (x / w) * h
-        const wave1 = Math.sin(x * 0.008 + t * 2.5 + layerPhase) * 35
-        const wave2 = Math.cos(x * 0.012 - t * 2 + layerPhase * 0.7) * 20
-        const wave3 = Math.sin(x * 0.005 + t * 1.5 + layerPhase * 1.2) * 15
-        const y = diagonalY + wave1 + wave2 + wave3 + baseOffset - h * 0.15
-        ctx.lineTo(x, y)
-      }
+      const parent = canvas.parentElement
+      const rect = parent?.getBoundingClientRect()
+      const targetW = Math.floor(rect?.width ?? window.innerWidth)
+      const targetH = Math.floor(rect?.height ?? window.innerHeight)
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.25)
 
-      const alpha = 0.3 + i * 0.08
-      const orangeIntensity = Math.min(255, 200 + i * 10)
-      ctx.strokeStyle = `rgba(${orangeIntensity}, ${100 + i * 15}, ${51 + i * 5}, ${alpha})`
-      ctx.stroke()
+      canvas.width = Math.round(targetW * dpr)
+      canvas.height = Math.round(targetH * dpr)
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+      w = targetW
+      h = targetH
+
+      const gradient = ctx.createRadialGradient(
+        w / 2,
+        h / 2,
+        0,
+        w / 2,
+        h / 2,
+        Math.max(w, h) * 0.8,
+      )
+      gradient.addColorStop(0, colors.deepBlack)
+      gradient.addColorStop(0.3, colors.darkerBlack)
+      gradient.addColorStop(0.6, colors.darkGray)
+      gradient.addColorStop(0.8, colors.darkOrange)
+      gradient.addColorStop(1, colors.orange)
+
+      gradientCache = gradient
+
+      const samplesTarget = 200
+      quality.step = Math.max(3, Math.round(w / samplesTarget))
     }
 
-    animationId = window.requestAnimationFrame(draw)
-  }
+    function draw(now: number) {
+      if (!running) return
 
-  function handleVisibilityChange() {
-    if (document.hidden) {
-      running = false
-      window.cancelAnimationFrame(animationId)
-    } else {
-      if (!running) {
-        running = true
-        lastTime = performance.now()
+      const result = getCanvasAndContext()
+      if (!result) return
+
+      const { ctx } = result
+
+      const dt = now - lastTime
+      if (dt < 30) {
         animationId = window.requestAnimationFrame(draw)
+        return
+      }
+      lastTime = now
+      frameCount++
+
+      if (now - startTime > 1000 && now - startTime < 1100 && frameCount < 40) {
+        quality.lineCount = 5
+        quality.shadowBlur = 8
+        quality.step = Math.max(quality.step, 5)
+      }
+
+      t += 0.003 * (dt / 16.67)
+
+      ctx.clearRect(0, 0, w, h)
+
+      if (gradientCache) {
+        ctx.fillStyle = gradientCache
+        ctx.fillRect(0, 0, w, h)
+      }
+
+      ctx.shadowBlur = quality.shadowBlur
+      ctx.shadowColor = "rgba(255, 136, 51, 0.5)"
+      ctx.lineWidth = 2.5
+
+      for (let i = 0; i < quality.lineCount; i++) {
+        ctx.beginPath()
+        const baseOffset = i * 50
+        const layerPhase = i * 0.4
+
+        for (let x = 0; x <= w; x += quality.step) {
+          const diagonalY = h - (x / w) * h
+          const wave1 = Math.sin(x * 0.008 + t * 2.5 + layerPhase) * 35
+          const wave2 = Math.cos(x * 0.012 - t * 2 + layerPhase * 0.7) * 20
+          const wave3 = Math.sin(x * 0.005 + t * 1.5 + layerPhase * 1.2) * 15
+          const y = diagonalY + wave1 + wave2 + wave3 + baseOffset - h * 0.15
+          ctx.lineTo(x, y)
+        }
+
+        const alpha = 0.3 + i * 0.08
+        const orangeIntensity = Math.min(255, 200 + i * 10)
+        ctx.strokeStyle = `rgba(${orangeIntensity}, ${100 + i * 15}, ${51 + i * 5}, ${alpha})`
+        ctx.stroke()
+      }
+
+      animationId = window.requestAnimationFrame(draw)
+    }
+
+    function handleVisibilityChange() {
+      if (document.hidden) {
+        running = false
+        window.cancelAnimationFrame(animationId)
+      } else {
+        if (!running) {
+          running = true
+          lastTime = performance.now()
+          animationId = window.requestAnimationFrame(draw)
+        }
       }
     }
-  }
 
-  // se não tiver canvas/ctx disponível, nem inicia
-  if (!getCanvasAndContext()) return
+    if (!getCanvasAndContext()) return
 
-  const handleResize = () => resize()
+    const handleResize = () => resize()
 
-  window.addEventListener("resize", handleResize)
-  document.addEventListener("visibilitychange", handleVisibilityChange)
+    window.addEventListener("resize", handleResize)
+    document.addEventListener("visibilitychange", handleVisibilityChange)
 
-  resize()
-  animationId = window.requestAnimationFrame(draw)
+    resize()
+    animationId = window.requestAnimationFrame(draw)
 
-  return () => {
-    running = false
-    window.removeEventListener("resize", handleResize)
-    document.removeEventListener("visibilitychange", handleVisibilityChange)
-    window.cancelAnimationFrame(animationId)
-  }
-}, [])
-
+    return () => {
+      running = false
+      window.removeEventListener("resize", handleResize)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      window.cancelAnimationFrame(animationId)
+    }
+  }, [])
   // =================== FIM DO CANVAS ===================
-
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -346,24 +336,29 @@ export default function Registro() {
       setCompletedSteps((prev) => [...prev, step])
     }
 
+    // ✅ fluxo especial do perfil
     if (currentKey === "perfil") {
       if (value === "Empresário" || value === "Diretor ou Gestor") {
         setStep(step + 1)
         return
       }
+
       if (finalizingRef.current) return
       finalizingRef.current = true
       setIsNavigating(true)
-      if (formData.email) {
+
+      // ✅ grava perfil no lead existente
+      if (leadId) {
         try {
           setIsSaving(true)
-          await completeLead(formData.email, { perfil: value })
+          await completeLead(leadId, { perfil: value })
         } catch (error) {
           console.error("Erro ao completar lead:", error)
         } finally {
           setIsSaving(false)
         }
       }
+
       router.push("/obrigado")
       return
     }
@@ -374,10 +369,12 @@ export default function Registro() {
       if (finalizingRef.current) return
       finalizingRef.current = true
       setIsNavigating(true)
-      if (formData.email) {
+
+      // ✅ grava dados finais
+      if (leadId) {
         try {
           setIsSaving(true)
-          await completeLead(formData.email, {
+          await completeLead(leadId, {
             perfil: formData.perfil,
             empresa: tempEmpresa || formData.empresa,
             faturamento: value,
@@ -388,6 +385,7 @@ export default function Registro() {
           setIsSaving(false)
         }
       }
+
       router.push("/obrigado")
     }
   }
@@ -404,17 +402,21 @@ export default function Registro() {
       setCompletedSteps((prev) => [...prev, step])
     }
 
+    // ✅ cria lead no passo do whatsapp
     if (step === 2 && !leadId) {
       try {
+         console.log("🔥 tentando criar lead no firebase...")
         setIsSaving(true)
         const lead = await createLead({
           nome: formData.nome,
           email: formData.email,
           whatsapp: formData.whatsapp,
         })
+          console.log("✅ lead criado:", lead)
         setLeadId(lead.id)
       } catch (error) {
-        console.error("Erro ao criar lead:", error)
+
+            console.error("❌ Erro ao criar lead:", error)
         return
       } finally {
         setIsSaving(false)
@@ -479,8 +481,8 @@ export default function Registro() {
                       isNavigating || isSaving
                         ? "opacity-60 cursor-not-allowed bg-white/90 border-gray-200 text-gray-700"
                         : currentValue === option
-                          ? "bg-white border-[#f5a205] text-gray-900 shadow-md"
-                          : "bg-white/90 border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-white"
+                        ? "bg-white border-[#f5a205] text-gray-900 shadow-md"
+                        : "bg-white/90 border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-white"
                     }`}
                   >
                     {option}
@@ -551,7 +553,7 @@ export default function Registro() {
                 className={`h-10 w-10 rounded-lg border border-white/20 backdrop-blur-sm flex items-center justify-center transition-all ${
                   step === 0
                     ? "opacity-20 cursor-not-allowed"
-                    : "opacity-60 hover:opacity-100 hover:bg-white/10 active:scale-95"
+                    : "opacity-60 hover:opacity-100 hover:bg白/10 active:scale-95"
                 }`}
               >
                 <ChevronLeft className="w-4 h-4 text-white" />
@@ -578,8 +580,8 @@ export default function Registro() {
                     index === step
                       ? "w-8 bg-[#f5a205]"
                       : index < step
-                        ? "w-2 bg-white/60"
-                        : "w-2 bg-white/30"
+                      ? "w-2 bg-white/60"
+                      : "w-2 bg-white/30"
                   }`}
                 />
               ))}

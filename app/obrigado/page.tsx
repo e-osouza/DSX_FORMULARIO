@@ -7,6 +7,48 @@ export default function ThankYou() {
   const [progress, setProgress] = useState(0)
   const [showConfetti, setShowConfetti] = useState(false)
 
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  // ====================== ÁUDIO AUTOPLAY (sem botão) ======================
+  useEffect(() => {
+    const audio = new Audio("/music.mp3")
+    audio.loop = false
+    audio.volume = 0.6
+    audio.muted = false // autoplay mutado é permitido
+
+    audioRef.current = audio
+
+    // tenta tocar já (mutado)
+    audio.play().catch(() => {})
+
+    // ao primeiro toque/scroll, libera o som automaticamente
+    const unlockAudio = () => {
+      const a = audioRef.current
+      if (!a) return
+
+      a.muted = false
+      a.play().catch(() => {})
+
+      window.removeEventListener("pointerdown", unlockAudio)
+      window.removeEventListener("touchstart", unlockAudio)
+      window.removeEventListener("scroll", unlockAudio)
+    }
+
+    window.addEventListener("pointerdown", unlockAudio)
+    window.addEventListener("touchstart", unlockAudio)
+    window.addEventListener("scroll", unlockAudio)
+
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio)
+      window.removeEventListener("touchstart", unlockAudio)
+      window.removeEventListener("scroll", unlockAudio)
+
+      audio.pause()
+      audioRef.current = null
+    }
+  }, [])
+  // ====================== FIM ÁUDIO ======================
+
   // ====================== CANVAS ANIMADO AJUSTADO PARA TS ======================
   useEffect(() => {
     let w = 0
@@ -227,7 +269,8 @@ export default function ThankYou() {
         <div className="relative z-[3] w-full max-w-[900px] flex flex-col items-center gap-8 text-center">
           <div className="space-y-4">
             <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold text-white leading-tight px-4">
-              Você está oficialmente participando do <span className="text-[#f5a205]">sorteio do par de ingressos.</span>
+              Você está oficialmente participando do{" "}
+              <span className="text-[#f5a205]">sorteio do par de ingressos.</span>
             </h1>
 
             <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md px-6 py-3 rounded-full border border-white/20 shadow-lg">
@@ -248,7 +291,9 @@ export default function ThankYou() {
                 <div className="text-6xl md:text-7xl font-bold text-white">
                   {Math.round(progress)}%
                 </div>
-                <div className="text-lg md:text-xl text-white/90 mt-2">Participação confirmada!</div>
+                <div className="text-lg md:text-xl text-white/90 mt-2">
+                  Participação confirmada!
+                </div>
               </div>
             </div>
           </div>
