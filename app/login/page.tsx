@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, FormEvent } from "react"
+import { useState, FormEvent, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2, LogIn } from "lucide-react"
 import { signInWithEmailAndPassword } from "firebase/auth"
 import { auth } from "@/lib/firebase" // 👈 importa o auth
 
-export default function LoginPage() {
-  const [username, setUsername] = useState("")   // aqui vamos usar como EMAIL
+function LoginPageInner() {
+  const [username, setUsername] = useState("") // aqui vamos usar como EMAIL
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -129,5 +129,20 @@ export default function LoginPage() {
         </form>
       </div>
     </main>
+  )
+}
+
+// ⬇⬇⬇ Wrapper com Suspense para o useSearchParams (resolve o erro do build)
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen flex items-center justify-center bg-white">
+          <span className="text-slate-500 text-sm">Carregando login...</span>
+        </main>
+      }
+    >
+      <LoginPageInner />
+    </Suspense>
   )
 }
